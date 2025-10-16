@@ -11,9 +11,18 @@ canvas.height = 256;
 const clearButton: HTMLButtonElement = document.createElement("button");
 clearButton.textContent = "Clear";
 
+// New UI Elements for Step 4
+const undoButton: HTMLButtonElement = document.createElement("button");
+undoButton.textContent = "Undo";
+
+const redoButton: HTMLButtonElement = document.createElement("button");
+redoButton.textContent = "Redo";
+
 document.body.appendChild(heading);
 document.body.appendChild(canvas);
 document.body.appendChild(clearButton);
+document.body.appendChild(undoButton);
+document.body.appendChild(redoButton);
 
 const ctx = canvas.getContext("2d");
 
@@ -24,9 +33,12 @@ interface Point {
 }
 
 const drawing: Point[][] = [];
+// New state for Step 4: A stack to hold undone paths
+const redoStack: Point[][] = [];
 let currentPath: Point[] = [];
 let isDrawing = false;
 
+// --- Drawing Logic ---
 function redraw() {
   if (!ctx) return;
 
@@ -39,9 +51,7 @@ function redraw() {
   ctx.lineJoin = "round";
 
   for (const path of allPaths) {
-    // Destructure the path into the first point and an array of the rest.
     const [startPoint, ...restOfPath] = path;
-
     if (!startPoint || restOfPath.length === 0) {
       continue;
     }
@@ -63,6 +73,8 @@ if (ctx) {
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
     currentPath = [{ x: e.clientX - rect.left, y: e.clientY - rect.top }];
+    // IMPORTANT: A new drawing action clears the redo history.
+    redoStack.length = 0;
   });
 
   canvas.addEventListener("mousemove", (e) => {
@@ -86,6 +98,35 @@ if (ctx) {
 
   clearButton.addEventListener("click", () => {
     drawing.length = 0;
+    // Also clear the redo stack when clearing the canvas
+    redoStack.length = 0;
+    canvas.dispatchEvent(new CustomEvent("drawing-changed"));
+  });
+
+  // --- New Logic for Step 4 ---
+  undoButton.addEventListener("click", () => {
+    // Can't undo if there's nothing to undo
+    if (drawing.length === 0) {
+      return;
+    }
+    // Pop the last path from the main drawing
+    const pathToUndo = drawing.pop()!;
+    // Push that undone path onto the redo stack
+    redoStack.push(pathToUndo);
+    // Trigger a redraw
+    canvas.dispatchEvent(new CustomEvent("drawing-changed"));
+  });
+
+  redoButton.addEventListener("click", () => {
+    // Can't redo if the redo stack is empty
+    if (redoStack.length === 0) {
+      return;
+    }
+    // Pop the last undone path from the redo stack
+    const pathToRedo = redoStack.pop()!;
+    // Push it back onto the main drawing
+    drawing.push(pathToRedo);
+    // Trigger a redraw
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
 
