@@ -8,6 +8,8 @@ const canvas: HTMLCanvasElement = document.createElement("canvas");
 canvas.width = 256;
 canvas.height = 256;
 
+const controls = document.createElement("div");
+
 const clearButton: HTMLButtonElement = document.createElement("button");
 clearButton.textContent = "Clear";
 
@@ -17,11 +19,22 @@ undoButton.textContent = "Undo";
 const redoButton: HTMLButtonElement = document.createElement("button");
 redoButton.textContent = "Redo";
 
+// New UI Elements for Step 6
+const thinButton: HTMLButtonElement = document.createElement("button");
+thinButton.textContent = "Thin";
+
+const thickButton: HTMLButtonElement = document.createElement("button");
+thickButton.textContent = "Thick";
+
+controls.appendChild(thinButton);
+controls.appendChild(thickButton);
+controls.appendChild(clearButton);
+controls.appendChild(undoButton);
+controls.appendChild(redoButton);
+
 document.body.appendChild(heading);
 document.body.appendChild(canvas);
-document.body.appendChild(clearButton);
-document.body.appendChild(undoButton);
-document.body.appendChild(redoButton);
+document.body.appendChild(controls);
 
 const ctx = canvas.getContext("2d");
 
@@ -37,9 +50,13 @@ interface Drawable {
 
 class MarkerLine implements Drawable {
   private path: Point[] = [];
+  // Store the thickness for this specific line
+  private lineWidth: number;
 
-  constructor(startPoint: Point) {
+  // The constructor now accepts a line width
+  constructor(startPoint: Point, lineWidth: number) {
     this.path.push(startPoint);
+    this.lineWidth = lineWidth;
   }
 
   drag(point: Point) {
@@ -51,23 +68,19 @@ class MarkerLine implements Drawable {
   }
 
   display(ctx: CanvasRenderingContext2D): void {
-    // Destructure the path first.
     const [startPoint, ...restOfPath] = this.path;
-
-    // Use the explicit, linter-friendly guard clause.
-    // This proves to the linter that startPoint is a valid Point below.
     if (!startPoint || restOfPath.length === 0) {
       return;
     }
 
     ctx.strokeStyle = "black";
-    ctx.lineWidth = 3;
+    // Use the line width stored in this object
+    ctx.lineWidth = this.lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
     ctx.beginPath();
     ctx.moveTo(startPoint.x, startPoint.y);
-
     for (const point of restOfPath) {
       ctx.lineTo(point.x, point.y);
     }
@@ -76,25 +89,24 @@ class MarkerLine implements Drawable {
 }
 
 // --- State Management ---
-// Our state now holds Drawable objects instead of raw points
 const drawing: Drawable[] = [];
 const redoStack: Drawable[] = [];
-let currentCommand: MarkerLine | null = null; // The command currently being created
+let currentCommand: MarkerLine | null = null;
 let isDrawing = false;
+
+// New state for Step 6
+let currentLineWidth = 3; // Default to thin
+let selectedToolButton = thinButton; // Default to the thin button
+selectedToolButton.classList.add("selectedTool"); // Set initial visual feedback
 
 // --- Drawing Logic ---
 function redraw() {
   if (!ctx) return;
-
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // The redraw logic is now much simpler!
-  // It just tells each object in the list to draw itself.
   for (const command of drawing) {
     command.display(ctx);
   }
-
-  // Also draw the command currently in progress
   if (currentCommand) {
     currentCommand.display(ctx);
   }
@@ -107,15 +119,14 @@ if (ctx) {
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
     const startPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    // Create a new command object instead of a simple array
-    currentCommand = new MarkerLine(startPoint);
+    // Pass the currently selected line width to the command's constructor
+    currentCommand = new MarkerLine(startPoint, currentLineWidth);
     redoStack.length = 0;
   });
 
   canvas.addEventListener("mousemove", (e) => {
     if (!isDrawing || !currentCommand) return;
     const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    // Add a point to the current command object
     currentCommand.drag(point);
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
@@ -123,7 +134,6 @@ if (ctx) {
   const stopDrawing = () => {
     if (!isDrawing || !currentCommand) return;
     isDrawing = false;
-    // If the command is valid, push the whole object onto the drawing stack
     if (currentCommand.isValid()) {
       drawing.push(currentCommand);
     }
@@ -153,6 +163,22 @@ if (ctx) {
     drawing.push(commandToRedo);
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
+
+  // --- New Tool Selection Logic for Step 6 ---
+  const selectTool = (toolButton: HTMLButtonElement, lineWidth: number) => {
+    // Remove highlight from the previously selected button
+    if (selectedToolButton) {
+      selectedToolButton.classList.remove("selectedTool");
+    }
+    // Set the new line width
+    currentLineWidth = lineWidth;
+    // Highlight the new button and update the state
+    toolButton.classList.add("selectedTool");
+    selectedToolButton = toolButton;
+  };
+
+  thinButton.addEventListener("click", () => selectTool(thinButton, 3));
+  thickButton.addEventListener("click", () => selectTool(thickButton, 8));
 
   canvas.addEventListener("drawing-changed", redraw);
 } else {

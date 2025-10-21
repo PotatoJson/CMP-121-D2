@@ -30,3 +30,9 @@ button:hover {
   background-color: #e9e9e9;
   border-color: #a0a0a0;
 }
+
+.selectedTool {
+  border-color: cornflowerblue;
+  border-width: 3px;
+  font-weight: bold;
+}
