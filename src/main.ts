@@ -19,7 +19,6 @@ undoButton.textContent = "Undo";
 const redoButton: HTMLButtonElement = document.createElement("button");
 redoButton.textContent = "Redo";
 
-// New UI Elements for Step 6
 const thinButton: HTMLButtonElement = document.createElement("button");
 thinButton.textContent = "Thin";
 
@@ -50,10 +49,8 @@ interface Drawable {
 
 class MarkerLine implements Drawable {
   private path: Point[] = [];
-  // Store the thickness for this specific line
   private lineWidth: number;
 
-  // The constructor now accepts a line width
   constructor(startPoint: Point, lineWidth: number) {
     this.path.push(startPoint);
     this.lineWidth = lineWidth;
@@ -74,7 +71,6 @@ class MarkerLine implements Drawable {
     }
 
     ctx.strokeStyle = "black";
-    // Use the line width stored in this object
     ctx.lineWidth = this.lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -88,27 +84,52 @@ class MarkerLine implements Drawable {
   }
 }
 
+// New class for Step 7: The tool preview circle
+class ToolPreview implements Drawable {
+  constructor(private position: Point, private lineWidth: number) {}
+
+  display(ctx: CanvasRenderingContext2D): void {
+    ctx.fillStyle = "rgba(0, 0, 0, 0.2)"; // Semi-transparent black
+    ctx.beginPath();
+    ctx.arc(
+      this.position.x,
+      this.position.y,
+      this.lineWidth / 2,
+      0,
+      2 * Math.PI,
+    );
+    ctx.fill();
+  }
+}
+
 // --- State Management ---
 const drawing: Drawable[] = [];
 const redoStack: Drawable[] = [];
 let currentCommand: MarkerLine | null = null;
 let isDrawing = false;
+let currentLineWidth = 3;
+let selectedToolButton = thinButton;
+selectedToolButton.classList.add("selectedTool");
 
-// New state for Step 6
-let currentLineWidth = 3; // Default to thin
-let selectedToolButton = thinButton; // Default to the thin button
-selectedToolButton.classList.add("selectedTool"); // Set initial visual feedback
+// New state for Step 7
+let toolPreview: ToolPreview | null = null;
 
 // --- Drawing Logic ---
 function redraw() {
   if (!ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  // Draw completed commands
   for (const command of drawing) {
     command.display(ctx);
   }
+  // Draw the command currently being created
   if (currentCommand) {
     currentCommand.display(ctx);
+  }
+  // Draw the tool preview on top, if it exists
+  if (toolPreview) {
+    toolPreview.display(ctx);
   }
 }
 
@@ -118,16 +139,24 @@ if (ctx) {
 
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
+    toolPreview = null; // Hide preview when drawing starts
     const startPoint = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    // Pass the currently selected line width to the command's constructor
     currentCommand = new MarkerLine(startPoint, currentLineWidth);
     redoStack.length = 0;
+    canvas.dispatchEvent(new CustomEvent("drawing-changed")); // Redraw to remove preview
   });
 
   canvas.addEventListener("mousemove", (e) => {
-    if (!isDrawing || !currentCommand) return;
     const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    currentCommand.drag(point);
+
+    if (isDrawing && currentCommand) {
+      // If drawing, extend the current line
+      currentCommand.drag(point);
+    } else {
+      // If not drawing, update the tool preview's position
+      toolPreview = new ToolPreview(point, currentLineWidth);
+    }
+    // Trigger a redraw for either action
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
 
@@ -142,7 +171,16 @@ if (ctx) {
   };
 
   canvas.addEventListener("mouseup", stopDrawing);
-  canvas.addEventListener("mouseleave", stopDrawing);
+
+  canvas.addEventListener("mouseleave", () => {
+    // If drawing when mouse leaves, finish the line
+    if (isDrawing) {
+      stopDrawing();
+    }
+    // Always hide the preview when the mouse leaves the canvas
+    toolPreview = null;
+    canvas.dispatchEvent(new CustomEvent("drawing-changed"));
+  });
 
   clearButton.addEventListener("click", () => {
     drawing.length = 0;
@@ -164,15 +202,11 @@ if (ctx) {
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
 
-  // --- New Tool Selection Logic for Step 6 ---
   const selectTool = (toolButton: HTMLButtonElement, lineWidth: number) => {
-    // Remove highlight from the previously selected button
     if (selectedToolButton) {
       selectedToolButton.classList.remove("selectedTool");
     }
-    // Set the new line width
     currentLineWidth = lineWidth;
-    // Highlight the new button and update the state
     toolButton.classList.add("selectedTool");
     selectedToolButton = toolButton;
   };
