@@ -37,14 +37,19 @@ undoButton.textContent = "Undo";
 const redoButton: HTMLButtonElement = document.createElement("button");
 redoButton.textContent = "Redo";
 
+// --- New Export Button ---
+const exportButton: HTMLButtonElement = document.createElement("button");
+exportButton.textContent = "Export 🖼️";
+
 // Append controls in logical order
 controls.appendChild(thinButton);
 controls.appendChild(thickButton);
-controls.appendChild(stickerButtonContainer); // Add the sticker container
-controls.appendChild(addStickerButton); // Add the "add" button
+controls.appendChild(stickerButtonContainer);
+controls.appendChild(addStickerButton);
 controls.appendChild(clearButton);
 controls.appendChild(undoButton);
 controls.appendChild(redoButton);
+controls.appendChild(exportButton);
 
 document.body.appendChild(heading);
 document.body.appendChild(canvas);
@@ -183,7 +188,7 @@ function redraw() {
   }
 }
 
-// --- Tool Selection Logic (Moved to Module Scope) ---
+// --- Tool Selection Logic ---
 const selectTool = (
   button: HTMLButtonElement,
   tool: Tool,
@@ -200,7 +205,7 @@ const selectTool = (
   selectedToolButton = button;
 };
 
-// --- Data-Driven Button Generation (Moved to Module Scope) ---
+// --- Data-Driven Button Generation ---
 function regenerateStickerButtons() {
   stickerButtonContainer.innerHTML = ""; // Clear all old buttons
 
@@ -220,6 +225,47 @@ function regenerateStickerButtons() {
       selectTool(stickerButton, "sticker", { sticker: emoji });
     }
   }
+}
+
+// --- Export Logic (Step 10) ---
+/**
+ * Creates a high-resolution version of the drawing and triggers a download.
+ */
+function exportDrawing() {
+  // 1. Temporarily create a new canvas object
+  const exportCanvas = document.createElement("canvas");
+  const exportSize = 1024;
+  exportCanvas.width = exportSize;
+  exportCanvas.height = exportSize;
+
+  const exportCtx = exportCanvas.getContext("2d");
+  if (!exportCtx) {
+    console.error("Could not create export canvas context.");
+    return;
+  }
+
+  // 2. Prepare the context
+  // Add a white background, otherwise exported PNG will be transparent
+  exportCtx.fillStyle = "white";
+  exportCtx.fillRect(0, 0, exportSize, exportSize);
+
+  // Scale the context to draw the 256x256 drawing onto the 1024x1024 canvas
+  const scaleFactor = exportSize / canvas.width; // 1024 / 256 = 4
+  exportCtx.scale(scaleFactor, scaleFactor);
+
+  // 3. Execute all items from the display list
+  // We only draw items from the `drawing` array, not previews or in-progress commands.
+  for (const command of drawing) {
+    command.display(exportCtx);
+  }
+
+  // 4. Trigger the file download
+  const dataUrl = exportCanvas.toDataURL("image/png");
+  const link = document.createElement("a");
+  link.download = "sketchpad-export.png";
+  link.href = dataUrl;
+  link.click();
+  // No need to append the link to the document.
 }
 
 // --- Event Listener Setup ---
@@ -325,6 +371,8 @@ if (ctx) {
       }
     }
   });
+
+  exportButton.addEventListener("click", exportDrawing);
 
   // Initial generation of sticker buttons on page load
   regenerateStickerButtons();
