@@ -28,6 +28,23 @@ stickerButtonContainer.className = "stamp-controls";
 const addStickerButton: HTMLButtonElement = document.createElement("button");
 addStickerButton.textContent = "Add Stamp 🎨";
 
+const sliderContainer = document.createElement("div");
+sliderContainer.className = "tool-options";
+
+const sliderLabel = document.createElement("label");
+sliderLabel.htmlFor = "tool-slider";
+sliderLabel.textContent = "Pen Hue (0-360):"; // Initial state
+
+const slider: HTMLInputElement = document.createElement("input");
+slider.type = "range";
+slider.id = "tool-slider";
+slider.min = "0";
+slider.max = "360";
+slider.value = "0";
+
+sliderContainer.appendChild(sliderLabel);
+sliderContainer.appendChild(slider);
+
 const clearButton: HTMLButtonElement = document.createElement("button");
 clearButton.textContent = "Clear";
 
@@ -46,6 +63,7 @@ controls.appendChild(thinButton);
 controls.appendChild(thickButton);
 controls.appendChild(stickerButtonContainer);
 controls.appendChild(addStickerButton);
+controls.appendChild(sliderContainer);
 controls.appendChild(clearButton);
 controls.appendChild(undoButton);
 controls.appendChild(redoButton);
@@ -75,10 +93,12 @@ interface Draggable extends Drawable {
 class penLine implements Draggable {
   private path: Point[] = [];
   private lineWidth: number;
+  private color: string;
 
-  constructor(startPoint: Point, lineWidth: number) {
+  constructor(startPoint: Point, lineWidth: number, color: string) {
     this.path.push(startPoint);
     this.lineWidth = lineWidth;
+    this.color = color; // This will now correctly use the passed-in color
   }
 
   drag(point: Point) {
@@ -93,7 +113,7 @@ class penLine implements Draggable {
     const [startPoint, ...restOfPath] = this.path;
     if (!startPoint || restOfPath.length === 0) return;
 
-    ctx.strokeStyle = "black";
+    ctx.strokeStyle = this.color;
     ctx.lineWidth = this.lineWidth;
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
@@ -108,10 +128,14 @@ class penLine implements Draggable {
 }
 
 class penPreview implements Drawable {
-  constructor(private position: Point, private lineWidth: number) {}
+  constructor(
+    private position: Point,
+    private lineWidth: number,
+    private color: string,
+  ) {}
 
   display(ctx: CanvasRenderingContext2D): void {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+    ctx.fillStyle = this.color;
     ctx.beginPath();
     ctx.arc(
       this.position.x,
@@ -125,7 +149,11 @@ class penPreview implements Drawable {
 }
 
 class Sticker implements Draggable {
-  constructor(private position: Point, private emoji: string) {}
+  constructor(
+    private position: Point,
+    private emoji: string,
+    private rotation: number,
+  ) {}
 
   drag(point: Point) {
     this.position = point;
@@ -133,27 +161,37 @@ class Sticker implements Draggable {
 
   display(ctx: CanvasRenderingContext2D): void {
     ctx.save();
+    ctx.translate(this.position.x, this.position.y);
+    ctx.rotate(this.rotation * (Math.PI / 180)); // Convert degrees to radians
     ctx.globalAlpha = 1.0;
     ctx.fillStyle = "black";
     ctx.font = "24px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.emoji, this.position.x, this.position.y);
+    ctx.fillText(this.emoji, 0, 0);
     ctx.restore();
   }
 }
 
 class StickerPreview implements Drawable {
-  constructor(private position: Point, private emoji: string) {}
+  constructor(
+    private position: Point,
+    private emoji: string,
+    private rotation: number,
+  ) {}
 
   display(ctx: CanvasRenderingContext2D): void {
     ctx.save();
+    ctx.translate(this.position.x, this.position.y);
+    ctx.rotate(this.rotation * (Math.PI / 180)); // Convert degrees to radians
+
     ctx.globalAlpha = 0.5;
     ctx.fillStyle = "black";
     ctx.font = "24px sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(this.emoji, this.position.x, this.position.y);
+    // FIX: Draw at (0, 0) relative to the translated/rotated context
+    ctx.fillText(this.emoji, 0, 0);
     ctx.restore();
   }
 }
@@ -171,6 +209,20 @@ let currentLineWidth = 2;
 let currentSticker = "🎨";
 let selectedToolButton: HTMLButtonElement = thinButton;
 selectedToolButton.classList.add("selectedTool");
+
+// Single state variable for the slider (0-360)
+let currentSetting = 0;
+
+// --- Helper Functions ---
+function getCurrentColor(): string {
+  return `hsl(${currentSetting}, 100%, 50%)`;
+}
+function getPreviewColor(): string {
+  return `hsla(${currentSetting}, 100%, 50%, 0.5)`;
+}
+function getCurrentRotation(): number {
+  return currentSetting;
+}
 
 // --- Drawing Logic ---
 function redraw() {
@@ -194,7 +246,6 @@ const selectTool = (
   tool: Tool,
   options: { lineWidth?: number; stamp?: string },
 ) => {
-  // Make safer: check if the previously selected button still exists
   if (selectedToolButton && document.body.contains(selectedToolButton)) {
     selectedToolButton.classList.remove("selectedTool");
   }
@@ -203,6 +254,12 @@ const selectTool = (
   if (options.stamp) currentSticker = options.stamp;
   button.classList.add("selectedTool");
   selectedToolButton = button;
+
+  if (currentTool === "pen") {
+    sliderLabel.textContent = "Pen Hue (0-360):";
+  } else if (currentTool === "stamp") {
+    sliderLabel.textContent = "Stamp Rotation (0-360):";
+  }
 };
 
 // --- Data-Driven Button Generation ---
@@ -267,6 +324,10 @@ function exportDrawing() {
 if (ctx) {
   const rect = canvas.getBoundingClientRect();
 
+  slider.addEventListener("input", (e) => {
+    currentSetting = parseInt((e.target as HTMLInputElement).value, 10);
+  });
+
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
     toolPreview = null;
@@ -274,9 +335,9 @@ if (ctx) {
     redoStack.length = 0;
 
     if (currentTool === "pen") {
-      currentCommand = new penLine(point, currentLineWidth);
+      currentCommand = new penLine(point, currentLineWidth, getCurrentColor());
     } else if (currentTool === "stamp") {
-      currentCommand = new Sticker(point, currentSticker);
+      currentCommand = new Sticker(point, currentSticker, getCurrentRotation());
     }
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
@@ -288,9 +349,13 @@ if (ctx) {
       (currentCommand as Draggable).drag(point);
     } else {
       if (currentTool === "pen") {
-        toolPreview = new penPreview(point, currentLineWidth);
+        toolPreview = new penPreview(point, currentLineWidth, getPreviewColor());
       } else if (currentTool === "stamp") {
-        toolPreview = new StickerPreview(point, currentSticker);
+        toolPreview = new StickerPreview(
+          point,
+          currentSticker,
+          getCurrentRotation(),
+        );
       }
     }
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
@@ -340,11 +405,11 @@ if (ctx) {
   // --- Event Listener Registrations ---
   thinButton.addEventListener(
     "click",
-    () => selectTool(thinButton, "pen", { lineWidth: 3 }),
+    () => selectTool(thinButton, "pen", { lineWidth: 2 }),
   );
   thickButton.addEventListener(
     "click",
-    () => selectTool(thickButton, "pen", { lineWidth: 8 }),
+    () => selectTool(thickButton, "pen", { lineWidth: 10 }),
   );
 
   // --- Custom Sticker Logic ---
@@ -356,10 +421,9 @@ if (ctx) {
 
     // Check for a valid, non-empty, non-null string
     if (newSticker && newSticker.trim() !== "") {
-      availableStickers.push(newSticker); // 1. Add to data source
-      regenerateStickerButtons(); // 2. Re-render UI
+      availableStickers.push(newSticker); // Add to data source
+      regenerateStickerButtons(); // Re-render UI
 
-      // 3. Automatically select the new stamp for a good user experience
       const newButton = stickerButtonContainer.lastChild as HTMLButtonElement;
       if (newButton) {
         selectTool(newButton, "stamp", { stamp: newSticker });
