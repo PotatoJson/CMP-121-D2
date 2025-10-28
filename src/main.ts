@@ -17,13 +17,16 @@ thinButton.textContent = "Thin";
 const thickButton: HTMLButtonElement = document.createElement("button");
 thickButton.textContent = "Thick";
 
-// New UI Elements for Step 8
-const starButton: HTMLButtonElement = document.createElement("button");
-starButton.textContent = "⭐";
-const heartButton: HTMLButtonElement = document.createElement("button");
-heartButton.textContent = "💖";
-const fireButton: HTMLButtonElement = document.createElement("button");
-fireButton.textContent = "🔥";
+// --- Data-Driven Sticker UI ---
+const availableStickers: string[] = ["⭐", "💖", "🔥"];
+
+// A container to hold the dynamically generated sticker buttons.
+const stickerButtonContainer = document.createElement("div");
+stickerButtonContainer.className = "sticker-controls";
+
+// The new button to add a custom sticker.
+const addStickerButton: HTMLButtonElement = document.createElement("button");
+addStickerButton.textContent = "Add Sticker 🎨";
 
 const clearButton: HTMLButtonElement = document.createElement("button");
 clearButton.textContent = "Clear";
@@ -34,11 +37,11 @@ undoButton.textContent = "Undo";
 const redoButton: HTMLButtonElement = document.createElement("button");
 redoButton.textContent = "Redo";
 
+// Append controls in logical order
 controls.appendChild(thinButton);
 controls.appendChild(thickButton);
-controls.appendChild(starButton);
-controls.appendChild(heartButton);
-controls.appendChild(fireButton);
+controls.appendChild(stickerButtonContainer); // Add the sticker container
+controls.appendChild(addStickerButton); // Add the "add" button
 controls.appendChild(clearButton);
 controls.appendChild(undoButton);
 controls.appendChild(redoButton);
@@ -116,7 +119,6 @@ class MarkerPreview implements Drawable {
   }
 }
 
-// New class for Step 8: Represents a placed sticker
 class Sticker implements Draggable {
   constructor(private position: Point, private emoji: string) {}
 
@@ -127,7 +129,6 @@ class Sticker implements Draggable {
   display(ctx: CanvasRenderingContext2D): void {
     ctx.save();
     ctx.globalAlpha = 1.0;
-    // FIX: Explicitly set the fill style to an opaque color.
     ctx.fillStyle = "black";
     ctx.font = "24px sans-serif";
     ctx.textAlign = "center";
@@ -142,8 +143,7 @@ class StickerPreview implements Drawable {
 
   display(ctx: CanvasRenderingContext2D): void {
     ctx.save();
-    ctx.globalAlpha = 0.5; // This still makes the preview transparent
-    // BEST PRACTICE: Set the base color here too for consistency.
+    ctx.globalAlpha = 0.5;
     ctx.fillStyle = "black";
     ctx.font = "24px sans-serif";
     ctx.textAlign = "center";
@@ -163,7 +163,7 @@ let isDrawing = false;
 
 let currentTool: Tool = "marker";
 let currentLineWidth = 3;
-let currentSticker = "⭐";
+let currentSticker = "⭐"; // Default to the first sticker
 let selectedToolButton: HTMLButtonElement = thinButton;
 selectedToolButton.classList.add("selectedTool");
 
@@ -183,13 +183,52 @@ function redraw() {
   }
 }
 
+// --- Tool Selection Logic (Moved to Module Scope) ---
+const selectTool = (
+  button: HTMLButtonElement,
+  tool: Tool,
+  options: { lineWidth?: number; sticker?: string },
+) => {
+  // Make safer: check if the previously selected button still exists
+  if (selectedToolButton && document.body.contains(selectedToolButton)) {
+    selectedToolButton.classList.remove("selectedTool");
+  }
+  currentTool = tool;
+  if (options.lineWidth) currentLineWidth = options.lineWidth;
+  if (options.sticker) currentSticker = options.sticker;
+  button.classList.add("selectedTool");
+  selectedToolButton = button;
+};
+
+// --- Data-Driven Button Generation (Moved to Module Scope) ---
+function regenerateStickerButtons() {
+  stickerButtonContainer.innerHTML = ""; // Clear all old buttons
+
+  // Re-create buttons from the data source
+  for (const emoji of availableStickers) {
+    const stickerButton = document.createElement("button");
+    stickerButton.textContent = emoji;
+
+    stickerButton.addEventListener("click", () => {
+      selectTool(stickerButton, "sticker", { sticker: emoji });
+    });
+
+    stickerButtonContainer.appendChild(stickerButton);
+
+    // If this is the currently active sticker, re-select its button
+    if (currentTool === "sticker" && currentSticker === emoji) {
+      selectTool(stickerButton, "sticker", { sticker: emoji });
+    }
+  }
+}
+
 // --- Event Listener Setup ---
 if (ctx) {
   const rect = canvas.getBoundingClientRect();
 
   canvas.addEventListener("mousedown", (e) => {
     isDrawing = true;
-    toolPreview = null; // Hide preview when action starts
+    toolPreview = null;
     const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     redoStack.length = 0;
 
@@ -205,10 +244,8 @@ if (ctx) {
     const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
 
     if (isDrawing && currentCommand) {
-      // If drawing, drag the current command (line or sticker)
       (currentCommand as Draggable).drag(point);
     } else {
-      // If not drawing, update the appropriate tool preview
       if (currentTool === "marker") {
         toolPreview = new MarkerPreview(point, currentLineWidth);
       } else if (currentTool === "sticker") {
@@ -222,7 +259,6 @@ if (ctx) {
     if (!isDrawing || !currentCommand) return;
     isDrawing = false;
 
-    // Check if the command is valid before pushing
     if (currentCommand instanceof MarkerLine && currentCommand.isValid()) {
       drawing.push(currentCommand);
     } else if (currentCommand instanceof Sticker) {
@@ -234,7 +270,6 @@ if (ctx) {
   };
 
   canvas.addEventListener("mouseup", stopDrawing);
-
   canvas.addEventListener("mouseleave", () => {
     if (isDrawing) stopDrawing();
     toolPreview = null;
@@ -261,20 +296,7 @@ if (ctx) {
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
   });
 
-  // --- Tool Selection Logic ---
-  const selectTool = (
-    button: HTMLButtonElement,
-    tool: Tool,
-    options: { lineWidth?: number; sticker?: string },
-  ) => {
-    selectedToolButton.classList.remove("selectedTool");
-    currentTool = tool;
-    if (options.lineWidth) currentLineWidth = options.lineWidth;
-    if (options.sticker) currentSticker = options.sticker;
-    button.classList.add("selectedTool");
-    selectedToolButton = button;
-  };
-
+  // --- Event Listener Registrations ---
   thinButton.addEventListener(
     "click",
     () => selectTool(thinButton, "marker", { lineWidth: 3 }),
@@ -283,18 +305,29 @@ if (ctx) {
     "click",
     () => selectTool(thickButton, "marker", { lineWidth: 8 }),
   );
-  starButton.addEventListener(
-    "click",
-    () => selectTool(starButton, "sticker", { sticker: "⭐" }),
-  );
-  heartButton.addEventListener(
-    "click",
-    () => selectTool(heartButton, "sticker", { sticker: "💖" }),
-  );
-  fireButton.addEventListener(
-    "click",
-    () => selectTool(fireButton, "sticker", { sticker: "🔥" }),
-  );
+
+  // --- Custom Sticker Logic ---
+  addStickerButton.addEventListener("click", () => {
+    const newSticker = prompt(
+      "Enter your custom sticker (e.g., an emoji):",
+      "✨",
+    );
+
+    // Check for a valid, non-empty, non-null string
+    if (newSticker && newSticker.trim() !== "") {
+      availableStickers.push(newSticker); // 1. Add to data source
+      regenerateStickerButtons(); // 2. Re-render UI
+
+      // 3. Automatically select the new sticker for a good user experience
+      const newButton = stickerButtonContainer.lastChild as HTMLButtonElement;
+      if (newButton) {
+        selectTool(newButton, "sticker", { sticker: newSticker });
+      }
+    }
+  });
+
+  // Initial generation of sticker buttons on page load
+  regenerateStickerButtons();
 
   canvas.addEventListener("drawing-changed", redraw);
 } else {
