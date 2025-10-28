@@ -12,21 +12,21 @@ const controls = document.createElement("div");
 controls.className = "controls";
 
 const thinButton: HTMLButtonElement = document.createElement("button");
-thinButton.textContent = "Thin";
+thinButton.textContent = "Pen (Thin)";
 
 const thickButton: HTMLButtonElement = document.createElement("button");
-thickButton.textContent = "Thick";
+thickButton.textContent = "Pen (Thick)";
 
 // --- Data-Driven Sticker UI ---
 const availableStickers: string[] = ["⭐", "💖", "🔥"];
 
-// A container to hold the dynamically generated sticker buttons.
+// A container to hold the dynamically generated stamp buttons.
 const stickerButtonContainer = document.createElement("div");
-stickerButtonContainer.className = "sticker-controls";
+stickerButtonContainer.className = "stamp-controls";
 
-// The new button to add a custom sticker.
+// The new button to add a custom stamp.
 const addStickerButton: HTMLButtonElement = document.createElement("button");
-addStickerButton.textContent = "Add Sticker 🎨";
+addStickerButton.textContent = "Add Stamp 🎨";
 
 const clearButton: HTMLButtonElement = document.createElement("button");
 clearButton.textContent = "Clear";
@@ -72,7 +72,7 @@ interface Draggable extends Drawable {
   drag(point: Point): void;
 }
 
-class MarkerLine implements Draggable {
+class penLine implements Draggable {
   private path: Point[] = [];
   private lineWidth: number;
 
@@ -82,7 +82,7 @@ class MarkerLine implements Draggable {
   }
 
   drag(point: Point) {
-    this.path.push(point); // Marker drag extends the path
+    this.path.push(point); // pen drag extends the path
   }
 
   isValid(): boolean {
@@ -107,7 +107,7 @@ class MarkerLine implements Draggable {
   }
 }
 
-class MarkerPreview implements Drawable {
+class penPreview implements Drawable {
   constructor(private position: Point, private lineWidth: number) {}
 
   display(ctx: CanvasRenderingContext2D): void {
@@ -159,16 +159,16 @@ class StickerPreview implements Drawable {
 }
 
 // --- State Management ---
-type Tool = "marker" | "sticker";
+type Tool = "pen" | "stamp";
 const drawing: Drawable[] = [];
 const redoStack: Drawable[] = [];
-let currentCommand: (MarkerLine | Sticker) | null = null;
+let currentCommand: (penLine | Sticker) | null = null;
 let toolPreview: Drawable | null = null;
 let isDrawing = false;
 
-let currentTool: Tool = "marker";
-let currentLineWidth = 3;
-let currentSticker = "⭐"; // Default to the first sticker
+let currentTool: Tool = "pen"; // Renamed
+let currentLineWidth = 2;
+let currentSticker = "🎨";
 let selectedToolButton: HTMLButtonElement = thinButton;
 selectedToolButton.classList.add("selectedTool");
 
@@ -192,7 +192,7 @@ function redraw() {
 const selectTool = (
   button: HTMLButtonElement,
   tool: Tool,
-  options: { lineWidth?: number; sticker?: string },
+  options: { lineWidth?: number; stamp?: string },
 ) => {
   // Make safer: check if the previously selected button still exists
   if (selectedToolButton && document.body.contains(selectedToolButton)) {
@@ -200,7 +200,7 @@ const selectTool = (
   }
   currentTool = tool;
   if (options.lineWidth) currentLineWidth = options.lineWidth;
-  if (options.sticker) currentSticker = options.sticker;
+  if (options.stamp) currentSticker = options.stamp;
   button.classList.add("selectedTool");
   selectedToolButton = button;
 };
@@ -215,24 +215,21 @@ function regenerateStickerButtons() {
     stickerButton.textContent = emoji;
 
     stickerButton.addEventListener("click", () => {
-      selectTool(stickerButton, "sticker", { sticker: emoji });
+      selectTool(stickerButton, "stamp", { stamp: emoji });
     });
 
     stickerButtonContainer.appendChild(stickerButton);
 
-    // If this is the currently active sticker, re-select its button
-    if (currentTool === "sticker" && currentSticker === emoji) {
-      selectTool(stickerButton, "sticker", { sticker: emoji });
+    // If this is the currently active stamp, re-select its button
+    if (currentTool === "stamp" && currentSticker === emoji) {
+      selectTool(stickerButton, "stamp", { stamp: emoji });
     }
   }
 }
 
-// --- Export Logic (Step 10) ---
-/**
- * Creates a high-resolution version of the drawing and triggers a download.
- */
+// --- Export Logic ---
 function exportDrawing() {
-  // 1. Temporarily create a new canvas object
+  // Temporarily create a new canvas object
   const exportCanvas = document.createElement("canvas");
   const exportSize = 1024;
   exportCanvas.width = exportSize;
@@ -244,7 +241,6 @@ function exportDrawing() {
     return;
   }
 
-  // 2. Prepare the context
   // Add a white background, otherwise exported PNG will be transparent
   exportCtx.fillStyle = "white";
   exportCtx.fillRect(0, 0, exportSize, exportSize);
@@ -253,19 +249,18 @@ function exportDrawing() {
   const scaleFactor = exportSize / canvas.width; // 1024 / 256 = 4
   exportCtx.scale(scaleFactor, scaleFactor);
 
-  // 3. Execute all items from the display list
+  // Execute all items from the display list
   // We only draw items from the `drawing` array, not previews or in-progress commands.
   for (const command of drawing) {
     command.display(exportCtx);
   }
 
-  // 4. Trigger the file download
+  // Trigger the file download
   const dataUrl = exportCanvas.toDataURL("image/png");
   const link = document.createElement("a");
   link.download = "sketchpad-export.png";
   link.href = dataUrl;
   link.click();
-  // No need to append the link to the document.
 }
 
 // --- Event Listener Setup ---
@@ -278,9 +273,9 @@ if (ctx) {
     const point = { x: e.clientX - rect.left, y: e.clientY - rect.top };
     redoStack.length = 0;
 
-    if (currentTool === "marker") {
-      currentCommand = new MarkerLine(point, currentLineWidth);
-    } else if (currentTool === "sticker") {
+    if (currentTool === "pen") {
+      currentCommand = new penLine(point, currentLineWidth);
+    } else if (currentTool === "stamp") {
       currentCommand = new Sticker(point, currentSticker);
     }
     canvas.dispatchEvent(new CustomEvent("drawing-changed"));
@@ -292,9 +287,9 @@ if (ctx) {
     if (isDrawing && currentCommand) {
       (currentCommand as Draggable).drag(point);
     } else {
-      if (currentTool === "marker") {
-        toolPreview = new MarkerPreview(point, currentLineWidth);
-      } else if (currentTool === "sticker") {
+      if (currentTool === "pen") {
+        toolPreview = new penPreview(point, currentLineWidth);
+      } else if (currentTool === "stamp") {
         toolPreview = new StickerPreview(point, currentSticker);
       }
     }
@@ -305,7 +300,7 @@ if (ctx) {
     if (!isDrawing || !currentCommand) return;
     isDrawing = false;
 
-    if (currentCommand instanceof MarkerLine && currentCommand.isValid()) {
+    if (currentCommand instanceof penLine && currentCommand.isValid()) {
       drawing.push(currentCommand);
     } else if (currentCommand instanceof Sticker) {
       drawing.push(currentCommand);
@@ -345,17 +340,17 @@ if (ctx) {
   // --- Event Listener Registrations ---
   thinButton.addEventListener(
     "click",
-    () => selectTool(thinButton, "marker", { lineWidth: 3 }),
+    () => selectTool(thinButton, "pen", { lineWidth: 3 }),
   );
   thickButton.addEventListener(
     "click",
-    () => selectTool(thickButton, "marker", { lineWidth: 8 }),
+    () => selectTool(thickButton, "pen", { lineWidth: 8 }),
   );
 
   // --- Custom Sticker Logic ---
   addStickerButton.addEventListener("click", () => {
     const newSticker = prompt(
-      "Enter your custom sticker (e.g., an emoji):",
+      "Enter your custom stamp (e.g., an emoji):",
       "✨",
     );
 
@@ -364,17 +359,17 @@ if (ctx) {
       availableStickers.push(newSticker); // 1. Add to data source
       regenerateStickerButtons(); // 2. Re-render UI
 
-      // 3. Automatically select the new sticker for a good user experience
+      // 3. Automatically select the new stamp for a good user experience
       const newButton = stickerButtonContainer.lastChild as HTMLButtonElement;
       if (newButton) {
-        selectTool(newButton, "sticker", { sticker: newSticker });
+        selectTool(newButton, "stamp", { stamp: newSticker });
       }
     }
   });
 
   exportButton.addEventListener("click", exportDrawing);
 
-  // Initial generation of sticker buttons on page load
+  // Initial generation of stamp buttons on page load
   regenerateStickerButtons();
 
   canvas.addEventListener("drawing-changed", redraw);
