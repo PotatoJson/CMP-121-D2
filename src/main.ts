@@ -349,7 +349,11 @@ if (ctx) {
       (currentCommand as Draggable).drag(point);
     } else {
       if (currentTool === "pen") {
-        toolPreview = new penPreview(point, currentLineWidth, getPreviewColor());
+        toolPreview = new penPreview(
+          point,
+          currentLineWidth,
+          getPreviewColor(),
+        );
       } else if (currentTool === "stamp") {
         toolPreview = new StickerPreview(
           point,
